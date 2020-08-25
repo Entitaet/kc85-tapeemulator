@@ -1,0 +1,119 @@
+<html>
+<head>
+	<title></title>
+	<script type="text/javascript" src="jquery-2.1.3.min.js"></script>
+</head>
+<body>
+
+</body>
+<script type="text/javascript">
+	
+	SAMPLE_RATE = 44100;
+	
+	// Nullbit:       f = 2400 Hz
+	ZERO_BIT = 1950;	
+	
+	// Einsbit:       f = 1200 Hz
+	ONE_BIT = 1050;
+	
+	//Trennzeichen:  f =  600 Hz
+	SEPARATOR = 557;
+
+	function add_wave(buffer, frequency) {
+
+		for (var i=0; i<Math.floor(SAMPLE_RATE/frequency); i++) {
+			buffer.push(Math.sin(2*Math.PI*i*frequency/SAMPLE_RATE));
+		}
+
+	}
+
+	function add_waves(buffer, frequency, max) {
+
+		for (var i=0; i<max; i++) {
+			add_wave(buffer, frequency);
+		}
+
+	}
+
+	// Byteaufbau:   8 Datenbits (Je 0- oder 1-Bit)
+	//	             1 Trennzeichen
+	//               mit Bit 0 beginnend
+	function convert_byte_to_audio(buffer, byte_to_send) {
+
+		for (var i=0; i<8; i++) {
+			add_wave(buffer, (((byte_to_send >> i) & 0x01) == 1) ? ONE_BIT : ZERO_BIT);
+		}
+		add_wave(buffer, SEPARATOR);
+
+	};
+
+	// Blockaufbau:  - Vorton: aus Schwingungen mit 1200 Hz (Einsbit)
+	//                 bestehend
+	//                 * erster Block: langer Vorton, etwa 8000 Schwingungen
+	//                 * folgende Blöcke: je nach Verarbeitungszeit
+	//                   (für MC-Programm 160 Schwingungen)
+	//               - 1 Trennzeichen
+	//               - 1 Byte Block-Nr. (siehe nächster Abschnitt)
+	//               - 128 Datenbytes (siehe nächster Abschnitt)
+	//               - 1 Byte Datensumme (siehe nächster Abschnitt)	
+	function create_block(buffer, block_number, blocks_total, data) {
+
+		var checksum = 0;
+		add_waves(buffer, ONE_BIT, block_number == 1 ? 8000 : 160);
+		add_wave(buffer, SEPARATOR);
+
+		convert_byte_to_audio(buffer, block_number == blocks_total ? 0xFF : block_number);
+
+		for (var i=(block_number-1) * 128; i<(block_number == blocks_total ? data.length : block_number * 128); i++) {
+			checksum += data.charCodeAt(i)
+			convert_byte_to_audio(buffer, data.charCodeAt(i));
+		}
+		convert_byte_to_audio(buffer, checksum & 0xFF);
+	}
+
+	function convert_file_to_audio(buffer, data) {
+
+		var data_length = data.length;
+		var blocks_total = Math.ceil(data_length/128);
+
+		for (var block_number=1; block_number<=blocks_total; block_number++) {
+			create_block(buffer, block_number, blocks_total, data);
+		}
+
+	};
+
+
+	$(document).ready(function() {
+
+		$.get('DIGGER-3.KCC', {}, function(response) {
+			var data = [];
+			convert_file_to_audio(data, response);
+
+			buffer = audio_context.createBuffer(1, data.length, SAMPLE_RATE);
+
+			bufferSource = audio_context.createBufferSource();
+			bufferSource.buffer = buffer;
+			
+			soundData = buffer.getChannelData(0);
+			for (var i = 0; i < soundData.length; i++) {
+			  soundData[i] = data[i];
+			}
+			bufferSource.connect(audio_context.destination);
+			bufferSource.start(0);
+
+		});
+
+	});
+
+  var audio_context, oscillator;
+ 
+  (function init(where){
+	try {
+	  audio_context = new (where.AudioContext || where.webkitAudioContext);
+	} catch (e) {
+	  alert('No web audio oscillator support in this browser');
+	}
+  }(window));
+
+</script>
+</html>
