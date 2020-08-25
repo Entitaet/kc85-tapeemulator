@@ -1,2 +1,3 @@
 # kc85-tapeemulator
-Tape emulator
+
+Tape emulator to load date into the KC85.
